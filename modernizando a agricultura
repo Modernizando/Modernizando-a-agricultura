@@ -1,0 +1,122 @@
+// Defina o ID e o nome do template Blynk
+#define BLYNK_TEMPLATE_ID "TMPL2UXFgOA2i"
+#define BLYNK_TEMPLATE_NAME "TCC MODERNIZANDO A AGRICULTURA"
+
+#include <BlynkSimpleEsp32.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Credenciais do Blynk
+char auth[] = "jd0vu27KhhZDHleKxOGlvEk5_MD1i8wl"; // Token de autenticação do Blynk
+char ssid[] = "tuliopinto";   // Nome da rede Wi-Fi
+char pass[] = "Gv091827!";    // Senha do Wi-Fi
+
+// Pinos dos sensores
+#define ONE_WIRE_BUS 4         // Pino do sensor de temperatura
+#define umidadeAnalogica 34     // Pino do sensor de umidade analógica
+#define umidadeDigital 25       // Pino do sensor de umidade digital
+#define pHAnalogico 32          // Pino do sensor de pH
+
+// Constantes de calibração do sensor de pH
+const float slope = -4.96;  // Inclinação do sensor de pH
+const float offset = 20.38; // Deslocamento do sensor de pH
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+// Função para leitura do pH
+float readPH() {
+  int valorpH = analogRead(pHAnalogico); // Leitura do valor analógico do sensor de pH
+  float voltage = (valorpH / 4095.0) * 3.3;  // Conversão para tensão (3.3V ADC)
+  return slope * voltage + offset; // Cálculo do pH
+}
+
+// Função para categorização da umidade com feedback para plantas
+String getEstadoUmidade(int umidade) {
+  if (umidade >= 75) return "Muito Úmido - Reduzir Irrigação ou Melhorar Drenagem";
+  if (umidade >= 50) return "Úmido - Ideal para a maioria das plantas";
+  if (umidade >= 25) return "Seco - Requer Irrigação";
+  return "Muito Seco - Necessário Irrigação Imediata";
+}
+
+// Função para categorização da temperatura com feedback para plantas
+String getEstadoTemperatura(float temperatura) {
+  if (temperatura > 30) {
+    return "Muito Quente - Procure Sombra e Aumente Irrigação";
+  }
+  if (temperatura > 25) {
+    return "Quente - Sol Direto ou Sombra, Manter Irrigação Regular";
+  }
+  if (temperatura > 20) {
+    return "Média - Ideal para as Plantas, Manter Cuidado Normal";
+  }
+  if (temperatura > 10) {
+    return "Fria - Algumas Plantas Precisam de Mais Calor";
+  }
+  return "Muito Fria - Proteja as Plantas de Geada e Forneça Abrigo";
+}
+
+// Função para feedback sobre o pH do solo
+String getEstadoPH(float pH) {
+  if (pH < 5.5) return "Solo Ácido - Adicionar Calcário para Corrigir pH";
+  if (pH >= 5.5 && pH <= 7.0) return "pH Ideal - Bom para a Maioria das Plantas";
+  return "Solo Alcalino - Adicionar Compostos Ácidos para Corrigir pH";
+}
+
+void setup() {
+  Serial.begin(115200);            // Inicializa a comunicação serial
+  sensors.begin();                 // Inicializa o sensor de temperatura
+  pinMode(umidadeDigital, INPUT);  // Configura o pino digital como entrada
+
+  Blynk.begin(auth, ssid, pass);   // Conecta ao Blynk
+}
+
+void loop() {
+  Blynk.run(); // Mantém a conexão com o Blynk
+
+  // Leitura da temperatura
+  sensors.requestTemperatures();
+  float temperatura = sensors.getTempCByIndex(0);
+
+  // Leitura da umidade digital
+  int umidadeDigitalValor = digitalRead(umidadeDigital);
+
+  // Leitura da umidade analógica
+  int umidadeAnalogicaValor = analogRead(umidadeAnalogica);
+  umidadeAnalogicaValor = map(umidadeAnalogicaValor, 4095, 100, 0, 100);
+
+  // Leitura do pH
+  float pH = readPH();
+
+  // Determina os estados
+  String estadoUmidade = getEstadoUmidade(umidadeAnalogicaValor);
+  String estadoTemperatura = getEstadoTemperatura(temperatura);
+  String estadoPH = getEstadoPH(pH);
+
+  // Envia os dados para o Blynk
+  Blynk.virtualWrite(V0, estadoUmidade);         // Estado da umidade
+  Blynk.virtualWrite(V1, umidadeAnalogicaValor); // Valor de umidade analógica
+  Blynk.virtualWrite(V2, temperatura);           // Temperatura
+  Blynk.virtualWrite(V3, pH);                   // Valor de pH
+  Blynk.virtualWrite(V4, estadoTemperatura);    // Estado da temperatura com feedback
+  Blynk.virtualWrite(V5, estadoPH);             // Estado do pH com feedback
+
+  // Exibe os resultados no Monitor Serial
+  Serial.print("Estado da Umidade: ");
+  Serial.println(estadoUmidade);
+
+  Serial.print("Umidade Analógica: ");
+  Serial.print(umidadeAnalogicaValor);
+  Serial.println(" %");
+
+  Serial.print("Temperatura do solo: ");
+  Serial.print(temperatura);
+  Serial.print(" °C - Estado: ");
+  Serial.println(estadoTemperatura);
+
+  Serial.print("pH do solo: ");
+  Serial.println(pH);
+  Serial.println(estadoPH);
+
+  delay(1000); // Intervalo de 1 segundo
+}
